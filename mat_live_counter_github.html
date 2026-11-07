@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAT Live Counter</title>
+<style>
+:root{--purple:#a78bfa;--bg:#0c0b14;--panel:#151522;--line:#302b43}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:Arial,sans-serif}
+body{background:transparent;color:#f5f3ff}
+#overlay{display:none;background:transparent;width:100vw;height:100vh;align-items:center;justify-content:center;overflow:hidden}
+#overlayNumber{font-size:clamp(48px,12vw,120px);font-weight:800;letter-spacing:2px;color:var(--purple);font-variant-numeric:tabular-nums;text-shadow:0 2px 8px #000,0 0 20px #8b5cf655;white-space:nowrap}
+#control{width:min(760px,96vw);margin:18px auto;padding:20px;border:1px solid var(--line);border-radius:18px;background:rgba(12,11,20,.97);box-shadow:0 12px 40px #0008}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-size:13px;letter-spacing:2px;color:#c4b5fd;font-weight:bold}
+h1{font-size:20px;margin:5px 0 0}.timer{font-size:clamp(54px,12vw,94px);font-weight:800;letter-spacing:2px;text-align:center;margin:20px 0 8px;font-variant-numeric:tabular-nums;text-shadow:0 0 24px #8b5cf655}
+.status{text-align:center;color:#aaa6bd;font-size:13px;margin-bottom:18px}
+.actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}.btn{border:0;border-radius:10px;padding:11px 16px;color:white;background:#29243b;font-weight:bold;cursor:pointer}.btn.primary{background:#8b5cf6}.btn:active{transform:scale(.98)}
+.settings{margin-top:20px;padding-top:17px;border-top:1px solid var(--line)}.settings h2{font-size:14px;margin:0 0 12px;color:#ddd6fe}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.field{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}.field label{display:block;font-size:12px;color:#aaa6bd;margin-bottom:6px}.field input{width:100%;background:#0c0b14;color:white;border:1px solid var(--line);border-radius:7px;padding:9px;font-size:15px;outline:none}.field input:focus{border-color:#8b5cf6}
+.event-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.event-buttons button{font-size:12px;padding:10px 5px}
+.footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:14px;color:#aaa6bd;font-size:11px}
+@media(max-width:520px){#control{padding:14px}.event-buttons{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div id="control">
+  <div class="top"><div><div class="brand">MAT LIVE TOOLS</div><h1>Contador de tiempo</h1></div><span style="font-size:12px;color:#aaa6bd">Panel de control</span></div>
+  <div class="timer" id="display">05:00</div>
+  <div class="status" id="status">Preparado</div>
+  <div class="actions">
+    <button class="btn primary" id="start">▶ Iniciar</button>
+    <button class="btn" id="pause">Ⅱ Pausar</button>
+    <button class="btn" id="reset">↺ Reiniciar</button>
+  </div>
+  <section class="settings">
+    <h2>CONFIGURACIÓN</h2>
+    <div class="grid">
+      <div class="field"><label for="initial">Tiempo inicial (minutos)</label><input id="initial" type="number" min="0" max="999" value="5"></div>
+      <div class="field"><label for="seconds">Segundos adicionales al iniciar</label><input id="seconds" type="number" min="0" max="3599" value="0"></div>
+      <div class="field"><label for="follow">Cada nuevo seguidor (segundos)</label><input id="follow" type="number" min="-3600" max="3600" value="1"></div>
+      <div class="field"><label for="gift">Cada regalo/moneda (segundos)</label><input id="gift" type="number" min="-3600" max="3600" value="3"></div>
+      <div class="field"><label for="like">Cada interacción/like (segundos)</label><input id="like" type="number" min="-3600" max="3600" value="0"></div>
+      <div class="field"><label for="share">Cada compartir (segundos)</label><input id="share" type="number" min="-3600" max="3600" value="5"></div>
+    </div>
+    <h2 style="margin-top:17px">PROBAR INTERACCIONES</h2>
+    <div class="event-buttons">
+      <button class="btn" data-event="follow">+ Seguidor</button>
+      <button class="btn" data-event="gift">+ Regalo</button>
+      <button class="btn" data-event="like">+ Like</button>
+      <button class="btn" data-event="share">+ Compartir</button>
+    </div>
+    <div class="footer"><span>Los valores negativos restan tiempo. Guarda para aplicar cambios.</span><button class="btn primary" id="save">Guardar ajustes</button></div>
+  </section>
+</div>
+<div id="overlay"><div id="overlayNumber">05:00</div></div>
+<script>
+(() => {
+ const $=id=>document.getElementById(id);
+ const overlayMode=new URLSearchParams(location.search).get('overlay')==='1';
+ if(overlayMode){$('control').style.display='none';$('overlay').style.display='flex';}
+ const fields=['initial','seconds','follow','gift','like','share'];
+ let remaining=300,running=false,interval=null,lastTick=Date.now();
+ const defaults={initial:5,seconds:0,follow:1,gift:3,like:0,share:5};
+ function readSettings(){return Object.fromEntries(fields.map(k=>[k,Number($(k)?.value)||0]));}
+ function format(n){n=Math.max(0,Math.floor(n));return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');}
+ function publish(){const data={remaining,running,updated:Date.now()};try{localStorage.setItem('matLiveCounterState',JSON.stringify(data));}catch(e){}}
+ function render(){const value=format(remaining);if(!overlayMode){$('display').textContent=value;$('status').textContent=remaining===0?'¡Tiempo terminado!':running?'Cuenta atrás en marcha':'Preparado / Pausado';}else $('overlayNumber').textContent=value;}
+ function stop(){running=false;if(interval)clearInterval(interval);interval=null;render();publish();}
+ function start(){if(remaining<=0){const s=readSettings();remaining=Math.max(0,s.initial*60+s.seconds);}if(running)return;running=true;lastTick=Date.now();interval=setInterval(()=>{const now=Date.now();const elapsed=Math.floor((now-lastTick)/1000);if(elapsed>0){remaining=Math.max(0,remaining-elapsed);lastTick+=elapsed*1000;if(remaining===0)stop();else{render();publish();}}},200);render();publish();}
+ function reset(){stop();const s=readSettings();remaining=Math.max(0,s.initial*60+s.seconds);render();publish();}
+ function applyRemote(){try{const d=JSON.parse(localStorage.getItem('matLiveCounterState')||'null');if(d&&Number.isFinite(d.remaining)){remaining=Math.max(0,d.remaining);running=!!d.running;if(interval)clearInterval(interval);interval=null;if(running){lastTick=Date.now();interval=setInterval(()=>{const now=Date.now();const elapsed=Math.floor((now-lastTick)/1000);if(elapsed>0){remaining=Math.max(0,remaining-elapsed);lastTick+=elapsed*1000;if(!remaining)stop();else render();}},200);}render();}}catch(e){}}
+ if(overlayMode){applyRemote();window.addEventListener('storage',e=>{if(e.key==='matLiveCounterState')applyRemote();});}
+ else{
+  try{const saved=JSON.parse(localStorage.getItem('matLiveCounterSettings')||'null');if(saved)fields.forEach(k=>{if(saved[k]!==undefined)$(k).value=saved[k];});}catch(e){}
+  $('start').onclick=start;$('pause').onclick=stop;$('reset').onclick=reset;
+  $('save').onclick=()=>{const s=readSettings();localStorage.setItem('matLiveCounterSettings',JSON.stringify(s));reset();};
+  document.querySelectorAll('[data-event]').forEach(b=>b.onclick=()=>{const s=readSettings();remaining=Math.max(0,remaining+s[b.dataset.event]);render();publish();});
+  reset();
+ }
+})();
+</script>
+</body>
+</html>
